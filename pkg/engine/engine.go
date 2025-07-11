@@ -1,45 +1,55 @@
 package engine
 
+import (
+	"sync"
+	"time"
+)
+
 /*
-   引擎是整个事件触发引擎的核心组件，它负责管理事件的注册和统一管理
+引擎是整个事件触发引擎的核心组件，它负责管理事件的注册和统一管理
 */
 type Engine struct {
+	WorldSystem *WorldSystem // 世界系统
+	Running     bool         // 引擎运行状态
+	StartTime   time.Time    // 引擎启动时间
+	CurrentTime time.Time    // 当前仿真时间
+	mu          sync.RWMutex // 保护并发访问
 }
 
 func NewEngine() *Engine {
-	return &Engine{}
+	return &Engine{
+		WorldSystem: NewWorldSystem(),
+		Running:     false,
+		StartTime:   time.Now(),
+		CurrentTime: time.Now(),
+	}
 }
 
-/*
-   世界系统是引擎的核心组件之一，它负责管理世界的状态和事件
-   其包含多个区域, 每个区域可以有自己的状态和事件;
-   其同步多个区域之间的状态和事件;
-   其支持对外部触发的事件进行转发;
-   其支持自动触发时间同步时间, 让区域时间同步一致;
-   其拥有独立的优先队列;
-*/
-type WorldSystem interface{}
+func (e *Engine) RegistryWorldSystem(ws *WorldSystem) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.WorldSystem = ws
+}
 
-/*
-   区域系统是世界系统的子系统之一，它负责管理区域的状态和事件
-   其包含多个实体, 每个实体可以有自己的状态和事件;
-   多个实体之间几乎没有交互, 但可以通过事件进行通信;
-   多个区域之间可以通过世界系统事件进行通信;
-   其拥有独立的优先队列;
-   其拥有一套状态机, 用于管理实体的状态管理, 产生新的事件;
-*/
-type RegionSystem interface{}
+func (e *Engine) Start() {
+	if e.Running {
+		return
+	}
 
-/*
-   Entity 是引擎中的实体对象，代表游戏世界中的一个具体对象
-   实体可以是玩家、NPC、物品等，它们可以拥有自己的状态和事件
-   实体可以通过事件进行通信和交互
-   实体可以被区域系统管理，并参与到区域的状态和事件中
-*/
-type Entity interface{}
+	e.Running = true
+	e.StartTime = time.Now()
+	e.CurrentTime = e.StartTime
 
-/*
-   Event 是引擎中的事件对象，代表游戏世界中的一个具体事件
-   事件可以是玩家的动作、NPC的行为、物品的变化等
-*/
-type Event interface{}
+	// 启动世界系统
+	go e.WorldSystem.Start()
+}
+
+func (e *Engine) Stop() {
+	if !e.Running {
+		return
+	}
+
+	e.Running = false
+	e.WorldSystem.Stop()
+	e.CurrentTime = time.Now() // 更新当前时间为停止时刻
+}
